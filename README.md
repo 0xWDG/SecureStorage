@@ -1,4 +1,4 @@
-# SecureStorage$$
+# SecureStorage
 
 SecureStorage is a property wrapper around the keychain to easily access your protected data.
 

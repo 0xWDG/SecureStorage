@@ -1,4 +1,4 @@
-# SecureStorage
+# SecureStorage$$
 
 SecureStorage is a property wrapper around the keychain to easily access your protected data.
 
@@ -68,11 +68,6 @@ struct ContentView: View {
     }
 }
 ```
-
-## Better example
-
-```swift
-
 
 ## Contact
 

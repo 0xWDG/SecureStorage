@@ -31,6 +31,8 @@ public struct SecureStorage: DynamicProperty {
     /// Should delete when asked?
     var shouldDeleteWhenAsked: Bool = false
 
+    @State var value: String?
+
     /// Creates an `SecureStorage` property.
     ///
     /// - Parameter key: The key to read and write to.
@@ -44,31 +46,33 @@ public struct SecureStorage: DynamicProperty {
         self.service = service
         self.wrappedValue = wrappedValue
         self.shouldDeleteWhenAsked = true
-    }
 
-    /// The value of the key in the keychain.
-    @State public var wrappedValue: String?
-
-    /// A binding to the value of the key in iCloud.
-    public var projectedValue: Binding<String?> {
-        Binding {
-            let query = [
+        let query = [
                 kSecAttrService: service,
                 kSecAttrAccount: key,
                 kSecClass: kSecClassGenericPassword,
                 kSecReturnData: true
-            ] as CFDictionary
+        ] as CFDictionary
 
-            var result: AnyObject?
-            SecItemCopyMatching(query, &result)
+        var result: AnyObject?
+        SecItemCopyMatching(query, &result)
 
-            if let data = result as? Data,
-               let string = String(data: data, encoding: .utf8) {
-                return string
-            }
+        if let data = result as? Data,
+           let string = String(data: data, encoding: .utf8) {
+            self.value = string
+        } else {
+            self.value = nil
+        }
+    }
 
-            return nil
-        } set: { newValue in
+    /// The value of the key in the keychain.
+    public var wrappedValue: String? {
+        get {
+            return value
+        }
+
+        // This needs to be nonmutating because we're setting a property on a struct.
+        nonmutating set {
             if let newValue {
                 let data = Data(newValue.utf8)
                 let query = [
@@ -107,7 +111,19 @@ public struct SecureStorage: DynamicProperty {
 
                     SecItemDelete(query)
                 }
-            }        }
+            }
+
+            value = newValue
+        }
+    }
+
+    /// A binding to the value of the key in iCloud.
+    public var projectedValue: Binding<String?> {
+        Binding {
+            return self.wrappedValue
+        } set: { newValue in
+            self.wrappedValue = newValue
+        }
     }
 
     /// Delete the item from the keychain.

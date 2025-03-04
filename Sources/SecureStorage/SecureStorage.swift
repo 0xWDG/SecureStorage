@@ -47,8 +47,11 @@ public struct SecureStorage: DynamicProperty {
     }
 
     /// The value of the key in the keychain.
-    public var wrappedValue: String? {
-        get {
+    @State public var wrappedValue: String?
+
+    /// A binding to the value of the key in iCloud.
+    public var projectedValue: Binding<String?> {
+        Binding {
             let query = [
                 kSecAttrService: service,
                 kSecAttrAccount: key,
@@ -65,10 +68,7 @@ public struct SecureStorage: DynamicProperty {
             }
 
             return nil
-        }
-
-        // This needs to be nonmutating because we're setting a property on a struct.
-        nonmutating set {
+        } set: { newValue in
             if let newValue {
                 let data = Data(newValue.utf8)
                 let query = [
@@ -107,17 +107,7 @@ public struct SecureStorage: DynamicProperty {
 
                     SecItemDelete(query)
                 }
-            }
-        }
-    }
-
-    /// A binding to the value of the key in iCloud.
-    public var projectedValue: Binding<String?> {
-        Binding {
-            return self.wrappedValue
-        } set: { newValue in
-            self.wrappedValue = newValue
-        }
+            }        }
     }
 
     /// Delete the item from the keychain.

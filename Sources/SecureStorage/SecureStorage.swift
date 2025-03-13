@@ -13,6 +13,7 @@
 import Foundation
 import SwiftUI
 import Security
+import Combine
 
 /// A property wrapper that reads and writes to the keychain.
 ///
@@ -29,9 +30,13 @@ public struct SecureStorage: DynamicProperty {
     var service: String
 
     /// Should delete when asked?
-    var shouldDeleteWhenAsked: Bool = false
+    var isInitialized: Bool = false
 
-    @State var value: String?
+    /// The cancellables to store.
+    var cancellables = Set<AnyCancellable>()
+
+    /// The observed storage
+    @ObservedObject private var store: Storage
 
     /// Creates an `SecureStorage` property.
     ///
@@ -44,8 +49,6 @@ public struct SecureStorage: DynamicProperty {
     ) {
         self.key = key
         self.service = service
-        self.wrappedValue = wrappedValue
-        self.shouldDeleteWhenAsked = true
 
         let query = [
                 kSecAttrService: service,
@@ -59,19 +62,20 @@ public struct SecureStorage: DynamicProperty {
 
         if let data = result as? Data,
            let string = String(data: data, encoding: .utf8) {
-            self.value = string
+            store = .init(string)
         } else {
-            self.value = nil
+            store = .init(nil)
         }
+
+        self.isInitialized = true
     }
 
-    /// The value of the key in the keychain.
+    /// The value of the key in iCloud.
     public var wrappedValue: String? {
         get {
-            return value
+            return store.value
         }
 
-        // This needs to be nonmutating because we're setting a property on a struct.
         nonmutating set {
             if let newValue {
                 let data = Data(newValue.utf8)
@@ -102,7 +106,7 @@ public struct SecureStorage: DynamicProperty {
                 }
             } else {
                 // Wait until we are initialized before deleting items
-                if shouldDeleteWhenAsked {
+                if isInitialized {
                     let query = [
                         kSecAttrService: service,
                         kSecAttrAccount: key,
@@ -113,16 +117,28 @@ public struct SecureStorage: DynamicProperty {
                 }
             }
 
-            value = newValue
+            store.value = newValue
         }
     }
 
     /// A binding to the value of the key in iCloud.
     public var projectedValue: Binding<String?> {
-        Binding {
-            return self.wrappedValue
-        } set: { newValue in
-            self.wrappedValue = newValue
+        $store.value
+    }
+
+    // MARK: - Storage
+    private final class Storage: ObservableObject {
+        var parentWillChange: ObservableObjectPublisher?
+
+        var value: String? {
+            willSet {
+                objectWillChange.send()
+                parentWillChange?.send()
+            }
+        }
+
+        init(_ value: String?) {
+            self.value = value
         }
     }
 
@@ -145,6 +161,24 @@ public struct SecureStorage: DynamicProperty {
         ] as CFDictionary
 
         SecItemDelete(query)
+    }
+
+    /// Get the parent, to send a willChange event to there.
+    public static subscript<OuterSelf: ObservableObject>(
+        _enclosingInstance instance: OuterSelf,
+        wrapped wrappedKeyPath: ReferenceWritableKeyPath<OuterSelf, String?>,
+        storage storageKeyPath: ReferenceWritableKeyPath<OuterSelf, Self>
+    ) -> String? {
+        get {
+            instance[keyPath: storageKeyPath].store.parentWillChange = (
+                instance.objectWillChange as? ObservableObjectPublisher
+            )
+
+            return instance[keyPath: storageKeyPath].wrappedValue
+        }
+        set {
+            instance[keyPath: storageKeyPath].wrappedValue = newValue
+        }
     }
 }
 #endif
